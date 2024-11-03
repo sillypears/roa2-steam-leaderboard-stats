@@ -17,3 +17,5 @@ Install pipenv and then:
 pipenv install
 pipenv run python ./main.py
 ```
+
+The script saves the xml files and resulting dataframe in the `./cache` directory, to make tweaking the plots or other work faster. Delete the cache directory when you want fresh data.
