@@ -96,7 +96,7 @@ def rivals2_plot(combined_df):
     bars = rank_counts.plot(kind='bar', color=colors, edgecolor='black')
     plt.xlabel('Rank')
     plt.ylabel('Number of Players')
-    plt.title('Rivals II Rank Distribution - ' + datetime.today().strftime('%Y-%m-%d'))
+    plt.title(f'Rivals II Rank Distribution - {datetime.today().strftime('%Y-%m-%d')} - {total_players:,} total players')
 
     # Rotate x-tick labels for better readability
     plt.xticks(ticks=range(len(custom_labels)), labels=custom_labels, rotation=45)
@@ -108,7 +108,8 @@ def rivals2_plot(combined_df):
         plt.text(bar.get_x() + bar.get_width() / 2, height, f'{percentage:.1f}%', 
                 ha='center', va='bottom')
 
-        
+    plt.text(.06, .05, 'By Sixbux\nhttps://github.com/jacobrlewis/steam-leaderboard-stats', fontsize=10, transform=plt.gcf().transFigure)    
+    
     # Save the plot
     plt.tight_layout()  # Adjust layout to make room for the x-axis labels
     plt.savefig("rank_distribution.png", format="png", dpi=300)
