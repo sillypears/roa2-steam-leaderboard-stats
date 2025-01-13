@@ -8,6 +8,7 @@ Using the leaderboard, and the ranked thresholds, we can create a visualization 
 
 ![](./rank_distribution.png)
 
+![](./rank_distribution_line.png)
 
 # How to run
 
