@@ -43,33 +43,37 @@ def download_xml():
             continue
         print(f'Processing leaderboard {LEADERBOARD_ID}:{LEADERBOARD_NAME}')
         os.makedirs(os.path.join(XML_CACHE, str(LEADERBOARD_ID)), exist_ok=True)
-    LEADERBOARD_ID = LB_IDS[-1]
-    next_url = f'https://steamcommunity.com/stats/{GAME_ID}/leaderboards/{LEADERBOARD_ID}/?xml=1'
+    for lbid in LB_IDS:
+        try:
+            if sys.argv[1]: lbid = LB_IDS[-1]
+        except:
+            pass
+        next_url = f'https://steamcommunity.com/stats/{GAME_ID}/leaderboards/{lbid}/?xml=1'
 
-    while next_url is not None:
-        xml_raw = requests.get(next_url).text
-        xml = et.fromstring(xml_raw)
+        while next_url is not None:
+            xml_raw = requests.get(next_url).text
+            xml = et.fromstring(xml_raw)
 
-        start = xml.find('entryStart').text.strip()
-        end = xml.find('entryEnd').text.strip()
+            start = xml.find('entryStart').text.strip()
+            end = xml.find('entryEnd').text.strip()
 
-        with open(os.path.join(XML_CACHE, str(LEADERBOARD_ID), f"{LEADERBOARD_ID}-{start}-{end}.xml"), 'w') as file:
-            file.write(minidom.parseString(xml_raw).toprettyxml(indent="  "))
-            print(f'saved {file.name}')
+            with open(os.path.join(XML_CACHE, str(lbid), f"{lbid}-{start}-{end}.xml"), 'w') as file:
+                file.write(minidom.parseString(xml_raw).toprettyxml(indent="  "))
+                print(f'saved {file.name}')
 
-        snapshot_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
-        batch = []
-        for entry in xml.findall('entries/entry'):
-            steamid = entry.find('steamid').text.strip()
-            rating = int(entry.find('score').text.strip())
-            rank = int(entry.find('rank').text.strip())
-            batch.append((steamid, rating, rank, lbid_id, snapshot_time))
+            snapshot_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            batch = []
+            for entry in xml.findall('entries/entry'):
+                steamid = entry.find('steamid').text.strip()
+                rating = int(entry.find('score').text.strip())
+                rank = int(entry.find('rank').text.strip())
+                batch.append((steamid, rating, rank, lbid_id, snapshot_time))
 
-        if batch:
-            db.save_entries_bulk(conn, batch)
+            if batch:
+                db.save_entries_bulk(conn, batch)
 
-        next_url_elem = xml.find("nextRequestURL")
-        next_url = next_url_elem.text.strip() if next_url_elem is not None else None
+            next_url_elem = xml.find("nextRequestURL")
+            next_url = next_url_elem.text.strip() if next_url_elem is not None else None
 
     conn.close()
 
