@@ -86,6 +86,9 @@ def get_leaderboard_xml():
         download_xml()
 
 if __name__ == '__main__':
-    rmtree(FOLDER_CACHE)
+    try:
+        rmtree(FOLDER_CACHE)
+    except:
+        pass
     get_leaderboard_xml()
 
