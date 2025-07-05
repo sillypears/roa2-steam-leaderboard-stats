@@ -35,10 +35,8 @@ def download_xml():
             LEADERBOARD_NAME = lb.find("name").text.strip()
             LEADERBOARD_DNAME = lb.find("display_name").text.strip()
             lbid_id = db.save_leaderboard(conn, LEADERBOARD_ID, LEADERBOARD_NAME, LEADERBOARD_DNAME)
-            print(lbid_id)
             if lbid_id is None:
                 lbid_id = db.get_leaderboard_by_id(conn, leaderboard_id=LEADERBOARD_ID)[0]
-            print(lbid_id)
         except ValueError:
             continue
         print(f'Processing leaderboard {LEADERBOARD_ID}:{LEADERBOARD_NAME}')
@@ -56,10 +54,10 @@ def download_xml():
 
             start = xml.find('entryStart').text.strip()
             end = xml.find('entryEnd').text.strip()
-
-            with open(os.path.join(XML_CACHE, str(lbid), f"{lbid}-{start}-{end}.xml"), 'w') as file:
-                file.write(minidom.parseString(xml_raw).toprettyxml(indent="  "))
-                print(f'saved {file.name}')
+            if len(sys.argv) <= 1:
+                with open(os.path.join(XML_CACHE, str(lbid), f"{lbid}-{start}-{end}.xml"), 'w') as file:
+                    file.write(minidom.parseString(xml_raw).toprettyxml(indent="  "))
+                    print(f'saved {file.name}')
 
             snapshot_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
             batch = []
@@ -67,7 +65,7 @@ def download_xml():
                 steamid = entry.find('steamid').text.strip()
                 rating = int(entry.find('score').text.strip())
                 rank = int(entry.find('rank').text.strip())
-                batch.append((steamid, rating, rank, lbid_id, snapshot_time))
+                batch.append((steamid, rating, rank, db.get_leaderboard_by_id(conn, leaderboard_id=lbid)[0], snapshot_time))
 
             if batch:
                 db.save_entries_bulk(conn, batch)
