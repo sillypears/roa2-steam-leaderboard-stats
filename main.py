@@ -1,22 +1,49 @@
-import os
+import os, sys
 import xml.etree.ElementTree as et
+from xml.dom import minidom
 
 import requests
 import pandas as pd
 from utils.utils import rivals2_plot, rivals2_line_plot, generate_leaderboard
+from shutil import rmtree
+import datetime
+import db
 
-XML_CACHE = './cache/xml/'
-DF_CACHE = './cache/df.pkl'
+DIRNAME = os.path.dirname(os.path.abspath(__file__))
+FOLDER_CACHE = os.path.join(DIRNAME, "cache")
+XML_CACHE = os.path.join(FOLDER_CACHE, "xml")
+DF_CACHE = os.path.join(FOLDER_CACHE, 'df.pkl')
 
 # Rivals 2, ranked lite ids
 GAME_ID = '2217000'
-LEADERBOARD_ID = '14800950'
-
+LB_IDS = []
 
 def download_xml():
     """
     Download and save each xml file provided by the steam xml api
     """
+    conn = db.init_db()  
+    lb_urls = f'https://steamcommunity.com/stats/{GAME_ID}/leaderboards/?xml=1'
+
+    xml_raw = requests.get(lb_urls).text
+    xml = et.fromstring(xml_raw)
+
+    for lb in xml.findall('leaderboard'):
+        try:
+            LEADERBOARD_ID = int(lb.find("lbid").text.strip())
+            LB_IDS.append(LEADERBOARD_ID)
+            LEADERBOARD_NAME = lb.find("name").text.strip()
+            LEADERBOARD_DNAME = lb.find("display_name").text.strip()
+            lbid_id = db.save_leaderboard(conn, LEADERBOARD_ID, LEADERBOARD_NAME, LEADERBOARD_DNAME)
+            print(lbid_id)
+            if lbid_id is None:
+                lbid_id = db.get_leaderboard_by_id(conn, leaderboard_id=LEADERBOARD_ID)[0]
+            print(lbid_id)
+        except ValueError:
+            continue
+        print(f'Processing leaderboard {LEADERBOARD_ID}:{LEADERBOARD_NAME}')
+        os.makedirs(os.path.join(XML_CACHE, str(LEADERBOARD_ID)), exist_ok=True)
+    LEADERBOARD_ID = LB_IDS[-1]
     next_url = f'https://steamcommunity.com/stats/{GAME_ID}/leaderboards/{LEADERBOARD_ID}/?xml=1'
 
     while next_url is not None:
@@ -26,53 +53,35 @@ def download_xml():
         start = xml.find('entryStart').text.strip()
         end = xml.find('entryEnd').text.strip()
 
-        with open(f'{XML_CACHE}/{start}-{end}.xml', 'w') as file:
-            file.write(xml_raw)
+        with open(os.path.join(XML_CACHE, str(LEADERBOARD_ID), f"{LEADERBOARD_ID}-{start}-{end}.xml"), 'w') as file:
+            file.write(minidom.parseString(xml_raw).toprettyxml(indent="  "))
             print(f'saved {file.name}')
 
-        next_url = xml.find("nextRequestURL").text.strip() if xml.find("nextRequestURL") is not None else None
+        snapshot_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        batch = []
+        for entry in xml.findall('entries/entry'):
+            steamid = entry.find('steamid').text.strip()
+            rating = int(entry.find('score').text.strip())
+            rank = int(entry.find('rank').text.strip())
+            batch.append((steamid, rating, rank, lbid_id, snapshot_time))
 
+        if batch:
+            db.save_entries_bulk(conn, batch)
+
+        next_url_elem = xml.find("nextRequestURL")
+        next_url = next_url_elem.text.strip() if next_url_elem is not None else None
+
+    conn.close()
 
 def get_leaderboard_xml():
     """
     If leaderboard xml does not exist, download it
     """
-    os.makedirs(os.path.dirname(XML_CACHE), exist_ok=True)
-    if len(os.listdir(XML_CACHE)) == 0:
+    os.makedirs(FOLDER_CACHE, exist_ok=True)
+    if len(os.listdir(FOLDER_CACHE)) == 0:
         download_xml()
 
-
-def xml_to_df():
-    """
-    Return a dataframe of leaderboard entrants from all xml files
-    """
+if __name__ == '__main__':
+    rmtree(FOLDER_CACHE)
     get_leaderboard_xml()
 
-    all_dfs = []
-    for file_name in os.listdir(XML_CACHE):
-        file_path = os.path.join(XML_CACHE, file_name)
-        df = pd.read_xml(file_path, xpath='.//entry')
-        all_dfs.append(df)
-
-    return pd.concat(all_dfs, ignore_index=True)
-
-
-def get_leaderboard_df():
-    """
-    Find the leaderboard df in cache, or create a new one
-    """
-
-    if os.path.exists(DF_CACHE):
-        return pd.read_pickle(DF_CACHE)
-
-    df = xml_to_df()
-    df.to_pickle(DF_CACHE)
-    print(f'saved {DF_CACHE}')
-    return df
-
-
-if __name__ == '__main__':
-    df = get_leaderboard_df()
-    rivals2_plot(df)
-    rivals2_line_plot(df)
-    generate_leaderboard(df)
