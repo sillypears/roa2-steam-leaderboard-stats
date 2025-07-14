@@ -18,13 +18,15 @@ DF_CACHE = os.path.join(FOLDER_CACHE, 'df.pkl')
 GAME_ID = '2217000'
 LB_IDS = []
 
+TOTAL = 0
+
 def download_xml():
     """
     Download and save each xml file provided by the steam xml api
     """
     conn = db.init_db()  
     lb_urls = f'https://steamcommunity.com/stats/{GAME_ID}/leaderboards/?xml=1'
-
+    total = 0
     xml_raw = requests.get(lb_urls).text
     xml = et.fromstring(xml_raw)
 
@@ -69,24 +71,27 @@ def download_xml():
 
             if batch:
                 db.save_entries_bulk(conn, batch)
-
+                total += len(batch)
             next_url_elem = xml.find("nextRequestURL")
             next_url = next_url_elem.text.strip() if next_url_elem is not None else None
 
     conn.close()
+    return total
 
 def get_leaderboard_xml():
     """
     If leaderboard xml does not exist, download it
     """
     os.makedirs(FOLDER_CACHE, exist_ok=True)
+    total = 0
     if len(os.listdir(FOLDER_CACHE)) == 0:
-        download_xml()
+        total = download_xml()
+    return total
 
 if __name__ == '__main__':
     try:
         rmtree(FOLDER_CACHE)
     except:
         pass
-    get_leaderboard_xml()
-
+    TOTAL = get_leaderboard_xml()
+    print(f"Saved {TOTAL} entries")
