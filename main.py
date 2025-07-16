@@ -20,6 +20,26 @@ LB_IDS = []
 
 TOTAL = 0
 
+def get_name_from_steamid(steamid: int) -> str:
+    name = ""
+    try:
+        res = requests.get(f"https://steamcommunity.com/profiles/{int(steamid)}/?xml=1")
+        res.raise_for_status()
+    except:
+        print(f"Steamid isn't an integer: {steamid}, {type(steamid)}")
+        return name
+    if  res.status_code == 200:
+        print(f"Got name for {steamid}")
+        xml_raw = res.text
+        xml = et.fromstring(xml_raw)
+        try:
+            name = xml.find('steamID').text.strip()
+        except:
+            print(f"Couldn't find name in xml")
+            print(xml)
+            return ""
+    return name
+
 def download_xml():
     """
     Download and save each xml file provided by the steam xml api
@@ -67,7 +87,11 @@ def download_xml():
                 steamid = entry.find('steamid').text.strip()
                 rating = int(entry.find('score').text.strip())
                 rank = int(entry.find('rank').text.strip())
-                batch.append((steamid, rating, rank, db.get_leaderboard_by_id(conn, leaderboard_id=lbid)[0], snapshot_time))
+                steam_name = ""
+                if steamid in (76561197990353168, 76561198089674311):
+                    print(f"Getting name for {steamid}")
+                    steam_name = get_name_from_steamid(steamid)
+                batch.append((steamid, rating, rank, steam_name, db.get_leaderboard_by_id(conn, leaderboard_id=lbid)[0], snapshot_time))
 
             if batch:
                 db.save_entries_bulk(conn, batch)

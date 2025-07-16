@@ -55,18 +55,18 @@ def save_entries(conn, leaderboard_id, entries, snapshot_time=None):
     cur = conn.cursor()
     for steamid, rating, rank in entries:
         cur.execute('''
-            INSERT INTO entries (steamid, rating, rank, leaderboard_id, snapshot_time)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO entries (steamid, rating, rank, steam_name, leaderboard_id, snapshot_time)
+            VALUES (?, ?, ?, ?, ?, ?)
         ''', (steamid, rating, rank, leaderboard_id, snapshot_time))
     conn.commit()
 
 def save_entries_bulk(conn, entries):
     """
-    entries: list of tuples (steamid, rating, rank, leaderboard_id, snapshot_time)
+    entries: list of tuples (steamid, rating, rank, steam_name, leaderboard_id, snapshot_time)
     """
     cur = conn.cursor()
     cur.executemany('''
-        INSERT INTO entries (steamid, rating, rank, leaderboard_id, snapshot_time)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO entries (steamid, rating, rank, steam_name, leaderboard_id, snapshot_time)
+        VALUES (?, ?, ?, ?, ?, ?)
     ''', entries)
     conn.commit()
