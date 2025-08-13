@@ -1,0 +1,13 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+    container_name: lb-be
+    ports:
+      - "8001:8001"
+    env_file:
+      - .env
+    volumes:
+      - /home/blarp/storage/roa2-lb:/data:rw

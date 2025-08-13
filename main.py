@@ -63,11 +63,15 @@ def download_xml():
             continue
         print(f'Processing leaderboard {LEADERBOARD_ID}:{LEADERBOARD_NAME}')
         os.makedirs(os.path.join(XML_CACHE, str(LEADERBOARD_ID)), exist_ok=True)
-    for lbid in LB_IDS:
-        try:
-            if sys.argv[1]: lbid = LB_IDS[-1]
-        except:
-            pass
+    
+    if sys.argv[1]:
+        LB_IDS_CHECKED = [max(LB_IDS)]
+    else:
+        LB_IDS_CHECKED = LB_IDS
+
+    snapshot_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    for lbid in LB_IDS_CHECKED:    
         next_url = f'https://steamcommunity.com/stats/{GAME_ID}/leaderboards/{lbid}/?xml=1'
 
         while next_url is not None:
@@ -81,7 +85,7 @@ def download_xml():
                     file.write(minidom.parseString(xml_raw).toprettyxml(indent="  "))
                     print(f'saved {file.name}')
 
-            snapshot_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+            # snapshot_time is now consistent for all pages of this leaderboard
             batch = []
             for entry in xml.findall('entries/entry'):
                 steamid = entry.find('steamid').text.strip()
@@ -117,5 +121,6 @@ if __name__ == '__main__':
         rmtree(FOLDER_CACHE)
     except:
         pass
+    print(f"Started run at {datetime.datetime.now()}")
     TOTAL = get_leaderboard_xml()
     print(f"Saved {TOTAL} entries")
