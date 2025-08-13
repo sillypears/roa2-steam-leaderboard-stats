@@ -170,3 +170,4 @@ cython_debug/
 Scripts/*
 lib/*
 lib64/*
+bin/*
