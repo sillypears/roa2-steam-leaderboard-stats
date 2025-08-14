@@ -1,20 +1,20 @@
 import os
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import sqlite3
-from typing import List
+import aiomysql
+from typing import List, Dict, Any
 from dotenv import load_dotenv
-
-import asyncio
 import json
-
+import threading
+from contextlib import contextmanager
 load_dotenv()
 
 DEFAULT_PATH =  os.path.join("/", "home", "blarp", "storage", "roa2-lb", "leaderboard.sqlite3")
 DB_PATH = os.environ.get("SQLITE_DB_PATH", DEFAULT_PATH)
-    
+
 print(f"{DB_PATH}, {os.path.exists(DB_PATH)}")
 
 if not os.path.exists(DB_PATH):
@@ -22,14 +22,66 @@ if not os.path.exists(DB_PATH):
 
 print(f"{DB_PATH}, {os.path.exists(DB_PATH)}")
 
+
+# Create a thread-local storage for connections
+thread_local = threading.local()
+
+def get_db_connection():
+    if not hasattr(thread_local, 'connection'):
+        thread_local.connection = sqlite3.connect(DB_PATH, check_same_thread=False)
+    return thread_local.connection
+
+@contextmanager
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_db_connection()
     try:
         yield conn
     finally:
-        conn.close()
+        # Don't close the connection, keep it for the thread
+        pass
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> Any:
+    pool = await aiomysql.create_pool(
+        host=os.environ.get("DB_HOST"),
+        user=os.environ.get("DB_USER"),
+        password=os.environ.get("DB_PASS"),
+        db=os.environ.get("DDB_SCHEMA") if os.environ.get(
+            "DEBUG") else os.environ.get("DB_SCHEMA"),
+        autocommit=True,
+    )
+    app.state.db_pool = pool
+    try:
+        yield
+    finally:
+        pool.close()
+        await pool.wait_closed()
+
+
+async def safe_db_fetch_all(request: Request, query: str, params: tuple = ()) -> Dict[str, Any]:
+    """Safe database fetch with proper error handling - uses request.app.state.db_pool"""
+    try:
+        async with request.app.state.db_pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(query, params)
+                rows = await cur.fetchall()
+                return rows
+    except Exception as e:
+        raise Exception(f"Failed to fetch data: {str(e)}")
+
+async def safe_db_fetch_one(request: Request, query: str, params: tuple = ()) -> Dict[str, Any]:
+    """Safe database fetch one with proper error handling"""
+    try:
+        async with request.app.state.db_pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                await cur.execute(query, params)
+                row = await cur.fetchone()
+                return row
+    except Exception as e:
+        raise Exception(f"Failed to fetch data: {str(e)}")
+
+
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://192.168.1.30:8006", "http://192.168.1.30:8007"],  
@@ -38,22 +90,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Example endpoint using sqlite3 dependency
 from fastapi import Depends
 
 @app.get("/matches")
 @app.get("/matches/{mevsrat}")
-def get_players(db: sqlite3.Connection = Depends(get_db), mevsrat: int = -1):
+async def get_players(db: sqlite3.Connection = Depends(get_db_connection), mevsrat: int = -1):
     cursor = db.cursor()
     if mevsrat < 0:
         cursor.execute("SELECT * FROM entries_vw LIMIT 1000")
     else:
         cursor.execute("select * from entries_vw WHERE steamid in (76561197990353168, 76561198089674311)")
-    rows = cursor.fetchall()
-    return {"entries": rows}
+    headers = [desc[0] for desc in cursor.description]
+    return {"data": [dict(zip(headers, row)) for row in cursor.fetchall()]}
+
+@app.get("/player/{steam_id}")
+async def get_player_by_steam_id(db: sqlite3.Connection = Depends(get_db_connection), steam_id: int = -1):
+    if steam_id < 0: 
+        return {"data": [], "message": "Not a valid SteamID"}
+    query = """
+        SELECT 
+            *
+        FROM 
+            entries_vw
+        WHERE
+            steamid = %s    
+    """ % (steam_id)
+    cur = db.cursor()
+    cur.execute(query)
+    headers = [desc[0] for desc in cur.description]
+    return {"data": [dict(zip(headers, row)) for row in cur.fetchall()]}
 
 @app.get("/lb-info")
-def get_lb_info(db: sqlite3.Connection = Depends(get_db)):
+async def get_lb_info(db: sqlite3.Connection = Depends(get_db_connection)):
+
     cur = db.cursor()
     query = """
         WITH player_days AS (
@@ -93,3 +162,36 @@ def get_lb_info(db: sqlite3.Connection = Depends(get_db)):
     cur.execute(query)
     headers = [desc[0] for desc in cur.description]
     return {"data": [dict(zip(headers, row)) for row in cur.fetchall()]}
+
+
+@app.get("/get_steamid/{name}")
+async def get_steamid_by_name(req: Request, name: str = None):
+    if name == None: return {"data": [], "message": "No valid name given"}
+
+    query = f"""
+        SELECT 
+            JSON_EXTRACT(linked_accounts, '$') as linked_accounts
+        FROM 
+            leaderboard.player_vw
+        WHERE
+            display_name LIKE "%%{name}%%"
+    """
+    data = await safe_db_fetch_all(request=req, query=query)
+    result = []
+    for row in data:
+        try:
+            accounts = json.loads(row['linked_accounts'])
+            for account in accounts:
+                if account.get('platform') == 'Steam':
+                    result.append({
+                        'steam_id': account.get('platform_user_id'),
+                        'steam_username': account.get('username'),
+                        'display_name': name
+                    })
+                    break  # Found Steam account, no need to continue
+                    
+        except (json.JSONDecodeError, TypeError) as e:
+            print(f"Error parsing JSON for {name}: {e}")
+            continue
+    
+    return {"data": result}
