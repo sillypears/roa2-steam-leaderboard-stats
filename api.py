@@ -195,3 +195,27 @@ async def get_steamid_by_name(req: Request, name: str = None):
             continue
     
     return {"data": result}
+
+@app.get("/bother/{name}")
+async def get_both_from_name(req: Request, name: str = None):
+    try:
+        data = await get_steamid_by_name(req, name)
+    except Exception as e:
+        print(e)
+        return {"data": []}
+    print(data)
+    steamid = int(data['data'][0]['steam_id'])
+    s_data = await get_player_by_steam_id(db=get_db_connection(), steam_id=steamid)
+    return {"data": s_data, "steamid": steamid, "name": name}
+
+@app.get("/bad-endpoint")
+async def get_bad_info(req: Request, name: str = None):
+    if name == None:
+        return {"data": [], "message":"Give a name bozo"}
+    query = '''
+        SELECT p.*
+        FROM leaderboard.player_vw p
+        JOIN leaderboard.linked_accounts la ON p.player_id = la.player_id
+        WHERE la.username = '%s';
+    ''' % (name)
+    return await safe_db_fetch_all(req, query)
