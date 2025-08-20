@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import datetime
-
-DB_PATH = 'leaderboard.sqlite3'
+import os
+DB_PATH = os.path.join(os.path.expanduser('~'), 'storage', 'roa2-lb', 'leaderboard.sqlite3')
 
 def init_db(db_path=DB_PATH):
     conn = sqlite3.connect(db_path)

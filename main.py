@@ -92,9 +92,11 @@ def download_xml():
                 rating = int(entry.find('score').text.strip())
                 rank = int(entry.find('rank').text.strip())
                 steam_name = ""
-                if steamid in (76561197990353168, 76561198089674311):
+                if int(steamid) in (76561197990353168, 76561198089674311):
                     print(f"Getting name for {steamid}")
                     steam_name = get_name_from_steamid(steamid)
+                if int(steamid) == 76561197965218314:
+                    print(f"found mang0?")
                 batch.append((steamid, rating, rank, steam_name, db.get_leaderboard_by_id(conn, leaderboard_id=lbid)[0], snapshot_time))
 
             if batch:
