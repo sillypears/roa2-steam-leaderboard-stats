@@ -210,12 +210,39 @@ async def get_both_from_name(req: Request, name: str = None):
 
 @app.get("/bad-endpoint")
 async def get_bad_info(req: Request, name: str = None):
-    if name == None:
-        return {"data": [], "message":"Give a name bozo"}
+    if name is None:
+        return {"data": [], "message": "Give a name bozo"}
+
     query = '''
         SELECT p.*
         FROM leaderboard.player_vw p
         JOIN leaderboard.linked_accounts la ON p.player_id = la.player_id
-        WHERE la.username = '%s';
-    ''' % (name)
-    return await safe_db_fetch_all(req, query)
+        WHERE la.username = %s;
+    '''
+    rows = await safe_db_fetch_all(req, query, (name,))
+
+    if rows:
+        match_count_fields = [col for col in rows[0].keys() if col.endswith("_match_count")]
+
+        updated_rows = []
+        for row in rows:
+            best_char, best_val = None, -1
+            for field in match_count_fields:
+                val = row[field]
+                if val is not None and val > best_val:
+                    best_char, best_val = field.replace("_match_count", ""), val
+
+            # rebuild dict with desired insertion order
+            new_row = {}
+            for k, v in row.items():
+                new_row[k] = v
+                if k == "display_name":  # insert right after this field
+                    new_row["most_played_character"] = {
+                        "character": best_char,
+                        "matches": best_val
+                    }
+            updated_rows.append(new_row)
+
+        return updated_rows
+
+    return rows
